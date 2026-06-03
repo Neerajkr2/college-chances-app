@@ -2,9 +2,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Resend } = require('resend');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { storeUser } = require('./userStorage');
 
 const app = express();
@@ -17,9 +17,53 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Resend email client
-const resend = new Resend(process.env.RESEND_API_KEY);
-console.log('✅ Resend email client initialized');
+// Brevo email sender using HTTPS API
+function sendEmailBrevo({ to, subject, html, pdfBuffer, pdfFilename }) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            sender: { name: process.env.FROM_NAME, email: process.env.FROM_EMAIL },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+            attachment: [
+                {
+                    name: pdfFilename,
+                    content: pdfBuffer.toString('base64'),
+                }
+            ]
+        });
+
+        const options = {
+            hostname: 'api.brevo.com',
+            path: '/v3/smtp/email',
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'content-type': 'application/json',
+                'api-key': process.env.BREVO_API_KEY,
+                'content-length': Buffer.byteLength(payload),
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    resolve(JSON.parse(data));
+                } else {
+                    reject(new Error(`Brevo API error ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+    });
+}
+
+console.log('✅ Brevo email client initialized');
 
 // Read the static PDF file
 const pdfFilePath = path.join(__dirname, 'Prepitus_College_Admission_Report.pdf');
@@ -588,18 +632,12 @@ app.post('/api/store-user-and-send-report', async (req, res) => {
         const emailHTML = generateEmailHTML(formData, collegeAnalysis);
 
         // Send email with PDF attachment
-        await resend.emails.send({
-            from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
+        await sendEmailBrevo({
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
-            attachments: [
-                {
-                    filename: `Prepitus_College_Admission_Report_${userData.firstName}.pdf`,
-                    content: pdfBuffer.toString('base64'),
-                    type: 'application/pdf',
-                }
-            ]
+            pdfBuffer,
+            pdfFilename: `Prepitus_College_Admission_Report_${userData.firstName}.pdf`,
         });
         console.log(`✅ Report sent successfully to: ${userData.email}`);
 
@@ -676,18 +714,12 @@ app.post('/api/send-college-report', async (req, res) => {
         const emailHTML = generateEmailHTML(userData, collegeAnalysis);
 
         // Send email with PDF attachment
-        await resend.emails.send({
-            from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
+        await sendEmailBrevo({
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
-            attachments: [
-                {
-                    filename: `Prepitus_College_Admission_Report_${userData.firstName || 'Student'}.pdf`,
-                    content: pdfBuffer.toString('base64'),
-                    type: 'application/pdf',
-                }
-            ]
+            pdfBuffer,
+            pdfFilename: `Prepitus_College_Admission_Report_${userData.firstName || 'Student'}.pdf`,
         });
         console.log(`✅ Report sent successfully to: ${userData.email}`);
 
