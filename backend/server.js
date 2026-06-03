@@ -2,7 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const fs = require('fs');
 const path = require('path');
 const { storeUser } = require('./userStorage');
@@ -17,25 +17,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Email transporter configuration
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT),
-    secure: process.env.SMTP_PORT === '465',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    }
-});
-
-// Verify transporter on startup
-transporter.verify(function (error, success) {
-    if (error) {
-        console.error('❌ SMTP connection error:', error);
-    } else {
-        console.log('✅ SMTP server is ready to take messages');
-    }
-});
+// Resend email client
+const resend = new Resend(process.env.RESEND_API_KEY);
+console.log('✅ Resend email client initialized');
 
 // Read the static PDF file
 const pdfFilePath = path.join(__dirname, 'Prepitus_College_Admission_Report.pdf');
@@ -604,21 +588,19 @@ app.post('/api/store-user-and-send-report', async (req, res) => {
         const emailHTML = generateEmailHTML(formData, collegeAnalysis);
 
         // Send email with PDF attachment
-        const mailOptions = {
-            from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
+        await resend.emails.send({
+            from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
             attachments: [
                 {
                     filename: `Prepitus_College_Admission_Report_${userData.firstName}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
                 }
             ]
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
         console.log(`✅ Report sent successfully to: ${userData.email}`);
 
         res.json({
@@ -694,21 +676,19 @@ app.post('/api/send-college-report', async (req, res) => {
         const emailHTML = generateEmailHTML(userData, collegeAnalysis);
 
         // Send email with PDF attachment
-        const mailOptions = {
-            from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
+        await resend.emails.send({
+            from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
             attachments: [
                 {
                     filename: `Prepitus_College_Admission_Report_${userData.firstName || 'Student'}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
                 }
             ]
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
         console.log(`✅ Report sent successfully to: ${userData.email}`);
 
         res.json({
