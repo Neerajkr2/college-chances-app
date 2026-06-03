@@ -18,19 +18,14 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Brevo email sender using HTTPS API
-function sendEmailBrevo({ to, subject, html, pdfBuffer, pdfFilename }) {
+function sendEmailGmail({ to, subject, html, pdfBuffer, pdfFilename }) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify({
             sender: { name: process.env.FROM_NAME, email: process.env.FROM_EMAIL },
             to: [{ email: to }],
             subject,
             htmlContent: html,
-            attachment: [
-                {
-                    name: pdfFilename,
-                    content: pdfBuffer.toString('base64'),
-                }
-            ]
+            attachment: [{ name: pdfFilename, content: pdfBuffer.toString('base64') }]
         });
 
         const options = {
@@ -632,7 +627,7 @@ app.post('/api/store-user-and-send-report', async (req, res) => {
         const emailHTML = generateEmailHTML(formData, collegeAnalysis);
 
         // Send email with PDF attachment
-        await sendEmailBrevo({
+        await sendEmailGmail({
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
@@ -714,7 +709,7 @@ app.post('/api/send-college-report', async (req, res) => {
         const emailHTML = generateEmailHTML(userData, collegeAnalysis);
 
         // Send email with PDF attachment
-        await sendEmailBrevo({
+        await sendEmailGmail({
             to: userData.email,
             subject: '🎓 Your Personalized College Admission Report & Action Plan - Prepitus',
             html: emailHTML,
